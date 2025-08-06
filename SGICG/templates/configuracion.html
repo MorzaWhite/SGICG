@@ -30,10 +30,10 @@
                         {% endif %}
                         <td>{{ config.get_tipo_certificado_display }}</td>
                         {% with prefix=config.tipo_item|add:"_"|add:config.tipo_certificado %}
-                        <td><input type="number" step="15" min="0" class="form-control text-center" name="ingreso_{{ prefix }}" value="{{ config.tiempo_ingreso|stringformat:".0f" }}"></td>
-                        <td><input type="number" step="15" min="0" class="form-control text-center" name="foto_{{ prefix }}" value="{{ config.tiempo_fotografia|stringformat:".0f" }}"></td>
-                        <td><input type="number" step="15" min="0" class="form-control text-center" name="revision_{{ prefix }}" value="{{ config.tiempo_revision|stringformat:".0f" }}"></td>
-                        <td><input type="number" step="15" min="0" class="form-control text-center" name="impresion_{{ prefix }}" value="{{ config.tiempo_impresion|stringformat:".0f" }}"></td>
+                        <td><input type="number" step="1" min="0" class="form-control text-center" name="ingreso_{{ prefix }}" value="{% if config.tiempo_ingreso is not None %}{{ config.tiempo_ingreso|stringformat:'.0f' }}{% endif %}"></td>
+                        <td><input type="number" step="1" min="0" class="form-control text-center" name="foto_{{ prefix }}" value="{% if config.tiempo_fotografia is not None %}{{ config.tiempo_fotografia|stringformat:'.0f' }}{% endif %}"></td>
+                        <td><input type="number" step="1" min="0" class="form-control text-center" name="revision_{{ prefix }}" value="{% if config.tiempo_revision is not None %}{{ config.tiempo_revision|stringformat:'.0f' }}{% endif %}"></td>
+                        <td><input type="number" step="1" min="0" class="form-control text-center" name="impresion_{{ prefix }}" value="{% if config.tiempo_impresion is not None %}{{ config.tiempo_impresion|stringformat:'.0f' }}{% endif %}"></td>
                         {% endwith %}
                     </tr>
                     {% endfor %}

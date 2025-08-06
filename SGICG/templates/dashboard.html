@@ -1,61 +1,72 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1 class="mb-4">Panel General de Órdenes</h1>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Panel General de Órdenes</h1>
+    <a href="{% url 'crear_orden' %}" class="btn btn-primary">Crear Nueva Orden</a>
+</div>
 
-{% for etapa_nom, ordenes in ordenes_por_etapa.items %}
-<div class="mb-5">
-    <h2>{{ etapa_nom }} <span class="badge bg-secondary rounded-pill">{{ ordenes|length }}</span></h2>
-    {% if ordenes %}
-        <div class="table-responsive">
-            <table class="table table-hover align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th># Orden Factura</th>
-                        <th>Ítems</th>
-                        <th>Tipo Certificado</th>
-                        <th style="width: 200px;">Tiempo Restante / Estado</th>
-                        <th class="text-end">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                {% for orden in ordenes %}
-                    <tr>
-                        <td><strong>{{ orden.numero_orden_facturacion }}</strong></td>
-                        <td>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col"># Orden Factura</th>
+                    <th scope="col">Ítems</th>
+                    <th scope="col">Etapa Actual</th>
+                    <th scope="col" style="width: 200px;">Tiempo Restante / Estado</th>
+                    <th scope="col" class="text-end">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for orden in ordenes_activas %}
+                <tr>
+                    <td>
+                        <strong>{{ orden.numero_orden_facturacion }}</strong>
+                    </td>
+                    <td>
+                        <ul class="list-unstyled mb-0">
                             {% for item in orden.items.all %}
-                                <div>{{ item.numero_item }}. {{ item.tipo_gema }}</div>
+                                <li>{{ item.numero_item }}. {{ item.descripcion_texto }}</li>
                             {% endfor %}
-                        </td>
-                        <td>
-                            {% for item in orden.items.all %}
-                                <div>{{ item.get_tipo_certificado_display }}</div>
-                            {% endfor %}
-                        </td>
-                        <td>
-                            {% for item in orden.items.all %}
-                                {% if item.fecha_limite_etapa %}
-                                <div class="countdown" data-deadline="{{ item.fecha_limite_etapa|date:'c' }}">
+                        </ul>
+                    </td>
+                    <td>
+                        <span class="badge bg-info">{{ orden.get_estado_actual_display }}</span>
+                    </td>
+                    <td>
+                        {# Como todos los ítems de una orden comparten la misma fecha límite, solo necesitamos mostrar la del primero. #}
+                        {% with primer_item=orden.items.first %}
+                            {% if primer_item and primer_item.fecha_limite_etapa %}
+                                <div class="countdown" data-deadline="{{ primer_item.fecha_limite_etapa|date:'c' }}">
                                     Calculando...
                                 </div>
-                                {% endif %}
-                            {% endfor %}
-                        </td>
-                        <td class="text-end">
-                            <a href="{% url 'detalle_orden' orden.id %}" class="btn btn-sm btn-outline-primary">Ver Detalles</a>
-                            <form action="{% url 'avanzar_etapa' orden.id %}" method="POST" style="display: inline;">
+                            {% else %}
+                                <span class="badge bg-secondary">N/A</span>
+                            {% endif %}
+                        {% endwith %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{% url 'detalle_orden' orden.id %}" class="btn btn-sm btn-outline-primary">Ver Detalles</a>
+                        
+                        {# Mostramos el botón de avanzar solo si la orden no está en la última etapa #}
+                        {% if orden.get_proxima_etapa %}
+                            <form action="{% url 'avanzar_etapa' orden.id %}" method="POST" class="d-inline">
                                 {% csrf_token %}
                                 <button type="submit" class="btn btn-sm btn-success">Finalizar Etapa</button>
                             </form>
-                        </td>
-                    </tr>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted p-5">
+                        <p class="mb-0">¡Felicidades! No hay órdenes activas en el sistema.</p>
+                    </td>
+                </tr>
                 {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    {% else %}
-        <p class="text-muted fst-italic">No hay órdenes en esta etapa.</p>
-    {% endif %}
+            </tbody>
+        </table>
+    </div>
 </div>
-{% endfor %}
 {% endblock %}
