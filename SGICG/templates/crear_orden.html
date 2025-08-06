@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Crear Nueva Orden de Certificación</h1>
+<form method="POST" action="{% url 'crear_orden' %}">
+    {% csrf_token %}
+    <div class="card">
+        <div class="card-body">
+            <div class="mb-3">
+                {{ form.numero_orden_facturacion.label_tag }}
+                {{ form.numero_orden_facturacion }}
+                {% if form.numero_orden_facturacion.errors %}<div class="alert alert-danger p-2 mt-2">{{ form.numero_orden_facturacion.errors|first }}</div>{% endif %}
+            </div><hr>
+            <h5 class="card-title">Ítems de la Orden</h5>
+            <div id="items-container">
+                {% include 'partials/item_form_row.html' %}
+            </div>
+            <button type="button" id="add-item" class="btn btn-secondary mt-2">Añadir Otro Ítem</button>
+        </div>
+        <div class="card-footer text-end">
+            <a href="{% url 'dashboard' %}" class="btn btn-light">Cancelar</a>
+            <button type="submit" class="btn btn-primary">Crear Orden</button>
+        </div>
+    </div>
+</form>
+
+<template id="item-template">
+    {% include 'partials/item_form_row.html' %}
+</template>
+{% endblock %}
+
+
+<!-- Este único bloque de script contiene toda la lógica necesaria -->
+{% block page_scripts %}
+<script>
+$(document).ready(function() {
+    const itemsContainer = $('#items-container');
+
+    function initializeItemBlock(itemBlock) {
+        const $itemBlock = $(itemBlock);
+        
+        $itemBlock.find('.gema-select, .forma-gema-select').select2({ width: '100%' });
+
+        function updateVisibility() {
+            const queEs = $itemBlock.find('.item-category-select').val();
+            const tipoCert = $itemBlock.find('.tipo-certificado-select').val();
+            const tipoJoya = $itemBlock.find('.tipo-joya-select').val();
+            const isRefCodeType = ['VERBAL_A_GC', 'REIMPRESION'].includes(queEs);
+
+            // Contenedores
+            const $gemaContainer = $itemBlock.find('.gema-principal-container');
+            const $codigoContainer = $itemBlock.find('.codigo-referencia-container');
+            const $detallesContainer = $itemBlock.find('.detalles-container');
+            const $joyaFields = $itemBlock.find('.joya-fields');
+            const $setComponents = $itemBlock.find('.set-components-container');
+            const $gcContainer = $itemBlock.find('.gc-cantidad');
+            const $escritoContainer = $itemBlock.find('.escrito-cantidad');
+            const $diamanteContainer = $itemBlock.find('.diamante-cantidad');
+            const $variosContainer = $itemBlock.find('.varios-cantidad-container');
+
+            // --- Lógica de Visibilidad ---
+            $gemaContainer.toggle(!isRefCodeType);
+            $codigoContainer.toggle(isRefCodeType);
+            $detallesContainer.toggle(!isRefCodeType);
+            
+            if (!isRefCodeType) {
+                // Ocultar todos los condicionales por defecto
+                $joyaFields.hide();
+                $setComponents.hide();
+                $gcContainer.hide();
+                $escritoContainer.hide();
+                $diamanteContainer.hide();
+                $variosContainer.hide();
+
+                // Mostrar campos de Joya
+                if (queEs === 'JOYA') {
+                    $joyaFields.show();
+                    if (tipoJoya === 'SET') {
+                        $setComponents.show();
+                    }
+                }
+
+                // --- LÓGICA DE CANTIDAD ACTUALIZADA ---
+                if (tipoCert === 'GC_SENCILLA' || tipoCert === 'GC_COMPLETA') {
+                    $gcContainer.show();
+                    if ($itemBlock.find('input[name^="cantidad_gc_group_"]:checked').val() === 'varios') {
+                        $variosContainer.show();
+                    }
+                } else if (tipoCert === 'ESCRITO') {
+                    $escritoContainer.show();
+                    if ($itemBlock.find('input[name^="cantidad_escrito_chk_"][value="varios"]').is(':checked')) {
+                        $variosContainer.show();
+                    }
+                } else if (tipoCert === 'DIAMANTE') {
+                    $diamanteContainer.show();
+                    if ($itemBlock.find('input[name^="cantidad_diamante_group_"]:checked').val() === 'varios') {
+                        $variosContainer.show();
+                    }
+                } else if (queEs === 'LOTE') {
+                    $variosContainer.show();
+                }
+            }
+        }
+
+        $itemBlock.on('change', 'select, input[type="radio"], input[type="checkbox"]', updateVisibility);
+        updateVisibility();
+    }
+
+    $('#add-item').on('click', function() {
+        const template = document.getElementById('item-template').content.cloneNode(true);
+        const newItem = $(template.firstElementChild);
+        const newItemIndex = itemsContainer.find('.item-row').length + 1;
+        
+        newItem.find('input[name^="componentes_set_"]').attr('name', `componentes_set_${newItemIndex}`);
+        newItem.find('input[name^="cantidad_gc_group_"]').attr('name', `cantidad_gc_group_${newItemIndex}`);
+        newItem.find('input[name^="cantidad_escrito_chk_"]').attr('name', `cantidad_escrito_chk_${newItemIndex}`);
+        newItem.find('input[name^="cantidad_diamante_group_"]').attr('name', `cantidad_diamante_group_${newItemIndex}`);
+        newItem.find('input[name="cantidad_gemas_varios"]').attr('name', `cantidad_gemas_varios_${newItemIndex}`);
+
+        itemsContainer.append(newItem);
+        initializeItemBlock(newItem);
+    });
+
+    initializeItemBlock(itemsContainer.find('.item-row:first'));
+});
+</script>
+{% endblock %}

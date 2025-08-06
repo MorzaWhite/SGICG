@@ -1,0 +1,4 @@
+/* Puedes añadir tus propios estilos aquí en el futuro */
+.table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+}

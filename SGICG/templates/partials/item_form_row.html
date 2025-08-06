@@ -1,0 +1,66 @@
+<div class="item-row border p-3 mb-3 rounded">
+    <!-- FILA 1 -->
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label">Tipo Certificado</label>
+            <select name="tipo_certificado" class="form-select tipo-certificado-select">
+                <option value="GC_SENCILLA">GC Sencilla</option><option value="GC_COMPLETA">GC Completa</option><option value="ESCRITO">Escrito</option><option value="DIAMANTE">Diamante</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">¿Qué es?</label>
+            <select name="que_es" class="form-select item-category-select">
+                <option value="JOYA" selected>Joya</option><option value="PIEDRA">Piedra(s) Suelta(s)</option><option value="LOTE">Lote de Gemas</option><option value="VERBAL_A_GC">Verbal a GC</option><option value="REIMPRESION">Reimpresión</option>
+            </select>
+        </div>
+        <div class="col-md-4 gema-principal-container">
+            <label class="form-label">Gema Principal</label>
+            <select name="gema_principal" class="form-select gema-select">{% for gema in gemas_principales %}<option value="{{ gema }}">{{ gema }}</option>{% endfor %}</select>
+        </div>
+        <div class="col-md-4 codigo-referencia-container" style="display: none;">
+            <label class="form-label">Código de Referencia</label>
+            <input type="text" name="codigo_referencia" class="form-control" placeholder="Introduce el código...">
+        </div>
+        <div class="col-md-2 d-flex align-items-end"><button type="button" class="btn btn-sm btn-outline-danger w-100" onclick="this.closest('.item-row').remove()">Eliminar Ítem</button></div>
+    </div>
+    <hr class="my-3">
+    <div class="detalles-container">
+        <!-- FILA 2 - CANTIDADES Y JOYERÍA -->
+        <div class="row g-3">
+            <div class="col-md-6 cantidad-container gc-cantidad">
+                <label class="form-label d-block">Cantidad de Gemas:</label>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="cantidad_gc_group_{{ forloop.counter|default:1 }}" value="1" checked><label class="form-check-label">1</label></div>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="cantidad_gc_group_{{ forloop.counter|default:1 }}" value="2"><label class="form-check-label">Par</label></div>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="cantidad_gc_group_{{ forloop.counter|default:1 }}" value="3"><label class="form-check-label">Trío</label></div>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="cantidad_gc_group_{{ forloop.counter|default:1 }}" value="varios"><label class="form-check-label">Varios</label></div>
+            </div>
+            <div class="col-md-6 cantidad-container escrito-cantidad" style="display: none;">
+                <label class="form-label d-block">Cantidad de Gemas (selecciona):</label>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="cantidad_escrito_chk_{{ forloop.counter|default:1 }}" value="1"><label class="form-check-label">1</label></div>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="cantidad_escrito_chk_{{ forloop.counter|default:1 }}" value="2"><label class="form-check-label">2</label></div>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="cantidad_escrito_chk_{{ forloop.counter|default:1 }}" value="3"><label class="form-check-label">3</label></div>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="cantidad_escrito_chk_{{ forloop.counter|default:1 }}" value="4"><label class="form-check-label">4</label></div>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="cantidad_escrito_chk_{{ forloop.counter|default:1 }}" value="5"><label class="form-check-label">5</label></div>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="cantidad_escrito_chk_{{ forloop.counter|default:1 }}" value="6"><label class="form-check-label">6</label></div>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="cantidad_escrito_chk_{{ forloop.counter|default:1 }}" value="varios"><label class="form-check-label">Varios</label></div>
+            </div>
+            <!-- === CONTENEDOR DIAMANTE CORREGIDO === -->
+            <div class="col-md-6 cantidad-container diamante-cantidad" style="display: none;">
+                <label class="form-label d-block">Cantidad de Gemas:</label>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="cantidad_diamante_group_{{ forloop.counter|default:1 }}" value="1" checked><label class="form-check-label">1</label></div>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="cantidad_diamante_group_{{ forloop.counter|default:1 }}" value="2"><label class="form-check-label">Par</label></div>
+                <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="cantidad_diamante_group_{{ forloop.counter|default:1 }}" value="varios"><label class="form-check-label">Varios</label></div>
+            </div>
+            <div class="col-md-4 varios-cantidad-container" style="display: none;">
+                <label class="form-label">Número de Gemas</label>
+                <input type="number" name="cantidad_gemas_varios" class="form-control" placeholder="Cantidad...">
+            </div>
+        </div>
+        <!-- FILA 3 - JOYERÍA -->
+        <div class="row g-3 mt-2 joya-fields"><div class="col-md-3"><label class="form-label">Tipo de Joya</label><select name="tipo_joya" class="form-select tipo-joya-select"><option value="ANILLO">Anillo</option><option value="DIJE">Dije</option><option value="TOPOS">Topos</option><option value="PULSERA">Pulsera</option><option value="PULSERA_TENIS">Pulsera Tenis</option><option value="SET">Set</option></select></div><div class="col-md-3"><label class="form-label">Metal</label><select name="metal" class="form-select"><option value="ORO">Oro</option><option value="ORO_AMARILLO">Oro Amarillo</option><option value="ORO_ROSA">Oro Rosa</option><option value="PLATA">Plata</option><option value="BLANCO">Blanco</option><option value="ROSA">Rosa</option><option value="NEGRO">Negro</option></select></div><div class="col-md-6 set-components-container" style="display: none;"><label class="form-label">Componentes:</label><br><div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="componentes_set_1" value="anillo"><label class="form-check-label">Anillo</label></div><div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="componentes_set_1" value="dije"><label class="form-check-label">Dije</label></div><div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="componentes_set_1" value="topos"><label class="form-check-label">Topos</label></div><div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="componentes_set_1" value="pulsera"><label class="form-check-label">Pulsera</label></div></div></div>
+        <!-- FILA 4 (Forma / Peso) -->
+        <div class="row g-3 mt-2"><div class="col-md-6"><label class="form-label">Forma de la Gema</label><select name="forma_gema" class="form-select forma-gema-select">{% for forma in formas_gema %}<option value="{{ forma }}">{{ forma }}</option>{% endfor %}</select></div><div class="col-md-6"><label class="form-label">Peso Gema (cts)</label><input type="number" step="0.01" name="peso_gema" class="form-control" placeholder="Ej: 1.25"></div></div>
+        <!-- FILA 5 (Comentarios) -->
+        <div class="row g-3 mt-2"><div class="col-md-12"><label class="form-label">Comentarios</label><textarea name="comentarios" class="form-control" rows="1"></textarea></div></div>
+    </div>
+</div>

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Etapa: {{ nombre_etapa }}</h1>
+
+{% if not ordenes %}
+    <p class="text-muted fst-italic">No hay órdenes en esta etapa.</p>
+{% else %}
+    
+    {% if etapa_key == 'ingreso' %}
+        <div class="accordion" id="accordionOrdenes">
+        {% for orden in ordenes %}
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading-{{ orden.id }}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ orden.id }}">
+                        Orden: {{ orden.numero_orden_facturacion }} ({{ orden.items.count }} ítems)
+                    </button>
+                </h2>
+                <div id="collapse-{{ orden.id }}" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        {% for item in orden.items.all %}
+                            <div class="card mb-3">
+                                <div class="card-header fw-bold">Ítem {{ item.numero_item }}: {{ item.gema_principal }}</div>
+                                <div class="card-body">
+                                    {% if item.nombre_excel %}
+                                        <p><strong>Codificado.</strong> Listo para editar Excel y subir QR.</p>
+                                        <div class="d-flex align-items-center flex-wrap gap-2">
+                                            <a href="{{ item.unc_path_excel }}" class="btn btn-primary" target="_blank">Abrir Excel</a>
+                                            <form method="POST" action="{% url 'detalle_orden' orden.id %}" enctype="multipart/form-data" class="input-group" style="max-width: 400px;">
+                                                {% csrf_token %}<input type="hidden" name="item_id" value="{{ item.id }}"><input type="file" class="form-control" name="qr_code" required><button class="btn btn-outline-success" type="submit" name="subir_ingreso">Subir QR</button>
+                                            </form>
+                                        </div>
+                                        {% if item.qr_cargado %}<p class="mt-2 text-success small">QR actual: <a href="{{ item.qr_cargado.url }}" target="_blank">Ver</a></p>{% endif %}
+                                    {% else %}
+                                        <p>Este ítem necesita ser codificado. Selecciona la plantilla Excel:</p>
+                                        <form action="{% url 'asignar_excel' item.id %}" method="POST" class="input-group">
+                                            {% csrf_token %}
+                                            <select name="plantilla_seleccionada" class="form-select" required>
+                                                <option value="" disabled selected>Seleccionar plantilla...</option>
+                                                {% for plantilla in plantillas_disponibles %}<option value="{{ plantilla }}">{{ plantilla }}</option>{% endfor %}
+                                            </select>
+                                            <button class="btn btn-success" type="submit">Asignar y Codificar</button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    {% else %}
+        <p>Vista para {{ nombre_etapa }}. (Contenido para esta etapa aún no implementado).</p>
+    {% endif %}
+{% endif %}
+{% endblock %}

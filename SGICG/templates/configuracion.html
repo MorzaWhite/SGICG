@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Configuración de Tiempos Estimados (en Minutos)</h1>
+<p>Define los minutos que se asignarán a cada etapa del proceso.</p>
+
+<form method="POST">
+    {% csrf_token %}
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover align-middle mb-0">
+                <thead class="table-light text-center">
+                    <tr>
+                        <th>Tipo de Ítem</th>
+                        <th>Tipo de Certificado</th>
+                        <th>Ingreso</th>
+                        <th>Fotografía</th>
+                        <th>Revisión</th>
+                        <th>Impresión</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <!-- El 'for' loop itera sobre el diccionario que la vista le envía -->
+                {% for tipo_item_label, configs in configs_agrupadas.items %}
+                    <!-- 'configs' es la lista de objetos para ese tipo de ítem -->
+                    {% for config in configs %}
+                    <tr>
+                        {% if forloop.first %}
+                        <td rowspan="{{ configs|length }}" class="fw-bold align-middle bg-light">{{ tipo_item_label }}</td>
+                        {% endif %}
+                        <td>{{ config.get_tipo_certificado_display }}</td>
+                        {% with prefix=config.tipo_item|add:"_"|add:config.tipo_certificado %}
+                        <td><input type="number" step="15" min="0" class="form-control text-center" name="ingreso_{{ prefix }}" value="{{ config.tiempo_ingreso|stringformat:".0f" }}"></td>
+                        <td><input type="number" step="15" min="0" class="form-control text-center" name="foto_{{ prefix }}" value="{{ config.tiempo_fotografia|stringformat:".0f" }}"></td>
+                        <td><input type="number" step="15" min="0" class="form-control text-center" name="revision_{{ prefix }}" value="{{ config.tiempo_revision|stringformat:".0f" }}"></td>
+                        <td><input type="number" step="15" min="0" class="form-control text-center" name="impresion_{{ prefix }}" value="{{ config.tiempo_impresion|stringformat:".0f" }}"></td>
+                        {% endwith %}
+                    </tr>
+                    {% endfor %}
+                {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted p-4">
+                            No se encontraron configuraciones de tiempo en la base de datos.<br>
+                            Por favor, detén el servidor y ejecuta el comando:<br>
+                            <code>python manage.py crear_tiempos_default</code>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer text-end">
+            <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+        </div>
+    </div>
+</form>
+{% endblock %}

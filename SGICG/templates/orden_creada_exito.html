@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="alert alert-success text-center">
+            <h4 class="alert-heading">¡Orden Creada con Éxito!</h4>
+            <p>La orden <strong>{{ orden.numero_orden_facturacion }}</strong> ha sido creada y movida a la etapa de Ingreso.</p>
+        </div>
+
+        <h3 class="mt-5 mb-3">Descripciones para Copiar</h3>
+
+        {% for item in orden.items.all %}
+            <div class="card mb-3">
+                <div class="card-header">
+                    <strong>Ítem {{ item.numero_item }}: {{ item.gema_principal }}</strong>
+                </div>
+                <div class="card-body">
+                    <!-- El texto a copiar está en un <pre> para mantener el formato y hacerlo seleccionable -->
+                    <pre id="texto-item-{{ item.id }}" class="bg-light p-2 rounded">{{ item.descripcion_texto }}</pre>
+                    
+                    <!-- Botón de copiar que usa JavaScript -->
+                    <button class="btn btn-sm btn-outline-primary copy-btn" data-target-id="texto-item-{{ item.id }}">
+                        Copiar Texto
+                    </button>
+                    <span id="feedback-{{ item.id }}" class="text-success ms-2" style="display:none;">¡Copiado!</span>
+                </div>
+            </div>
+        {% endfor %}
+
+        <hr>
+
+        <div class="text-center mt-4">
+            <a href="{% url 'crear_orden' %}" class="btn btn-primary">Crear Otra Orden</a>
+            <a href="{% url 'dashboard' %}" class="btn btn-secondary">Ir al Dashboard</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block page_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const copyButtons = document.querySelectorAll('.copy-btn');
+
+    copyButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            const targetId = this.dataset.targetId;
+            const textElement = document.getElementById(targetId);
+            const feedbackElement = document.getElementById('feedback-' + targetId.split('-')[2]);
+            
+            // Usamos la API del portapapeles del navegador, que es moderna y segura
+            navigator.clipboard.writeText(textElement.textContent).then(function() {
+                // Éxito al copiar
+                feedbackElement.style.display = 'inline';
+                setTimeout(() => {
+                    feedbackElement.style.display = 'none';
+                }, 2000); // El mensaje desaparece después de 2 segundos
+            }, function(err) {
+                // Error al copiar
+                console.error('Error al copiar el texto: ', err);
+                alert('No se pudo copiar el texto.');
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

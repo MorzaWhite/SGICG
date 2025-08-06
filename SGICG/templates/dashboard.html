@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Panel General de Órdenes</h1>
+
+{% for etapa_nom, ordenes in ordenes_por_etapa.items %}
+<div class="mb-5">
+    <h2>{{ etapa_nom }} <span class="badge bg-secondary rounded-pill">{{ ordenes|length }}</span></h2>
+    {% if ordenes %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th># Orden Factura</th>
+                        <th>Ítems</th>
+                        <th>Tipo Certificado</th>
+                        <th style="width: 200px;">Tiempo Restante / Estado</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for orden in ordenes %}
+                    <tr>
+                        <td><strong>{{ orden.numero_orden_facturacion }}</strong></td>
+                        <td>
+                            {% for item in orden.items.all %}
+                                <div>{{ item.numero_item }}. {{ item.tipo_gema }}</div>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% for item in orden.items.all %}
+                                <div>{{ item.get_tipo_certificado_display }}</div>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% for item in orden.items.all %}
+                                {% if item.fecha_limite_etapa %}
+                                <div class="countdown" data-deadline="{{ item.fecha_limite_etapa|date:'c' }}">
+                                    Calculando...
+                                </div>
+                                {% endif %}
+                            {% endfor %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'detalle_orden' orden.id %}" class="btn btn-sm btn-outline-primary">Ver Detalles</a>
+                            <form action="{% url 'avanzar_etapa' orden.id %}" method="POST" style="display: inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-success">Finalizar Etapa</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="text-muted fst-italic">No hay órdenes en esta etapa.</p>
+    {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

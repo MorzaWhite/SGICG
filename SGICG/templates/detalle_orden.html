@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Detalle de Orden: {{ orden.numero_orden_facturacion }}</h1>
+    <span class="badge bg-info fs-5">{{ orden.get_estado_actual_display }}</span>
+</div>
+
+<div class="row g-4">
+{% for item in orden.items.all %}
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Ítem {{ item.numero_item }}: {{ item.tipo_gema }} ({{ item.get_tipo_certificado_display }})</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Columna para Etapa de Ingreso -->
+                    <div class="col-md-6 border-end">
+                        <h6>Etapa de Ingreso</h6>
+
+                        <!-- Sección de Excel con enlace directo a la red -->
+                        <div class="mb-4 p-3 bg-light rounded">
+                            <h6 class="mb-3">1. Abrir y Editar Archivo de Datos</h6>
+                            {% if item.unc_path_excel %}
+                                <a href="{{ item.unc_path_excel }}" class="btn btn-primary" target="_blank">
+                                    Abrir Excel desde la Red
+                                </a>
+                                <div class="form-text mt-2">
+                                    Recuerda guardar los cambios (Ctrl+S) en Excel para que se actualice en el servidor.
+                                </div>
+                            {% else %}
+                                <p class="text-danger">No se encontró el archivo Excel. Revisa la configuración.</p>
+                            {% endif %}
+                        </div>
+
+                        <!-- Sección de QR -->
+                        <div class="mb-4 p-3 bg-light rounded">
+                            <h6 class="mb-3">2. Subir Código QR</h6>
+                            <form method="POST" enctype="multipart/form-data">
+                                {% csrf_token %}
+                                <input type="hidden" name="item_id" value="{{ item.id }}">
+                                
+                                <div class="mb-3">
+                                    <label for="qr_code_{{ item.id }}" class="form-label">Subir/Reemplazar Código QR</label>
+                                    <input class="form-control" type="file" name="qr_code" id="qr_code_{{ item.id }}" accept="image/*">
+                                </div>
+                                <button type="submit" name="subir_ingreso" class="btn btn-success">Guardar QR</button>
+                            </form>
+                        </div>
+                        
+                        <!-- Mostrar QR ya subido -->
+                        {% if item.qr_cargado %}
+                            <p><strong>QR Actual:</strong></p>
+                            <a href="{{ item.qr_cargado.url }}" target="_blank">
+                                <img src="{{ item.qr_cargado.url }}" style="max-width: 150px; height: auto;" class="img-thumbnail">
+                            </a>
+                        {% endif %}
+                    </div>
+
+                    <!-- Columna para Etapa de Fotografía -->
+                    <div class="col-md-6">
+                        <h6>Etapa de Fotografía</h6>
+                        <p>Subir las fotos profesionales de la gema. Se guardarán en la carpeta del ítem.</p>
+                        <form method="POST" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            <input type="hidden" name="item_id" value="{{ item.id }}">
+                            <div class="mb-3">
+                                <label for="fotos_{{ item.id }}" class="form-label">Fotos Profesionales (seleccionar varias)</label>
+                                <input class="form-control" type="file" name="fotos_profesionales" id="fotos_{{ item.id }}" multiple>
+                            </div>
+                            <button type="submit" name="subir_fotos" class="btn btn-primary">Guardar Fotos</button>
+                        </form>
+
+                        <div class="mt-3 row">
+                            {% for foto in item.fotos.all %}
+                            <div class="col-3 mb-3">
+                                <a href="{{ foto.imagen.url }}" target="_blank">
+                                    <img src="{{ foto.imagen.url }}" class="img-thumbnail" alt="Foto de {{ item.tipo_gema }}">
+                                </a>
+                            </div>
+                            {% empty %}
+                            <p class="text-muted fst-italic">Aún no se han subido fotos para este ítem.</p>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endfor %}
+</div>
+{% endblock %}
