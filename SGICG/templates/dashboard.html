@@ -35,21 +35,23 @@
                         <span class="badge bg-info">{{ orden.get_estado_actual_display }}</span>
                     </td>
                     <td>
-                        {# Como todos los ítems de una orden comparten la misma fecha límite, solo necesitamos mostrar la del primero. #}
-                        {% with primer_item=orden.items.first %}
-                            {% if primer_item and primer_item.fecha_limite_etapa %}
-                                <div class="countdown" data-deadline="{{ primer_item.fecha_limite_etapa|date:'c' }}">
+                        {# --- INICIO DE LA CORRECCIÓN --- #}
+                        {# Buscamos el ÚLTIMO ítem de la orden, que es el que tiene la fecha de entrega final. #}
+                        {% with ultimo_item=orden.items.all.last %}
+                            {% if ultimo_item and ultimo_item.fecha_limite_etapa %}
+                                <div class="countdown" data-deadline="{{ ultimo_item.fecha_limite_etapa|date:'c' }}">
                                     Calculando...
                                 </div>
                             {% else %}
                                 <span class="badge bg-secondary">N/A</span>
                             {% endif %}
                         {% endwith %}
+                        {# --- FIN DE LA CORRECCIÓN --- #}
                     </td>
                     <td class="text-end">
                         <a href="{% url 'detalle_orden' orden.id %}" class="btn btn-sm btn-outline-primary">Ver Detalles</a>
                         
-                        {# Mostramos el botón de avanzar solo si la orden no está en la última etapa #}
+                        {# El botón de avanzar se muestra si la orden aún no está finalizada. #}
                         {% if orden.get_proxima_etapa %}
                             <form action="{% url 'avanzar_etapa' orden.id %}" method="POST" class="d-inline">
                                 {% csrf_token %}

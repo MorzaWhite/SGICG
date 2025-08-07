@@ -8,6 +8,23 @@
             <p>La orden <strong>{{ orden.numero_orden_facturacion }}</strong> ha sido creada y movida a la etapa de Ingreso.</p>
         </div>
 
+        <div class="card text-center my-4">
+    <div class="card-header">
+        <strong>Fecha de Entrega Estimada</strong>
+    </div>
+    <div class="card-body">
+        <p class="card-text">Considerando la carga de trabajo actual y el tiempo total de esta orden, la fecha de finalización estimada es:</p>
+        <h3 class="card-title">
+            {# Buscamos el último ítem de la orden, que tendrá la fecha más lejana #}
+            {% if orden.items.last.fecha_limite_etapa %}
+                {{ orden.items.last.fecha_limite_etapa|date:"l, d \d\e F \d\e Y \a \l\a\s H:i" }}
+            {% else %}
+                No calculado
+            {% endif %}
+        </h3>
+    </div>
+</div>
+
         <h3 class="mt-5 mb-3">Descripciones para Copiar</h3>
 
         {% for item in orden.items.all %}

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1 class="mb-4">Configuración de Tiempos Estimados (en Minutos)</h1>
-<p>Define los minutos que se asignarán a cada etapa del proceso.</p>
+<h1 class="mb-4">Configuración de Tiempos Estimados (en Segundos)</h1>
+<p>Define los segundos para cada etapa (ej: 1 hora = 3600; 1 minuto = 60).</p>
 
 <form method="POST">
     {% csrf_token %}
@@ -13,16 +13,14 @@
                     <tr>
                         <th>Tipo de Ítem</th>
                         <th>Tipo de Certificado</th>
-                        <th>Ingreso</th>
-                        <th>Fotografía</th>
-                        <th>Revisión</th>
-                        <th>Impresión</th>
+                        <th>Ingreso (seg)</th>
+                        <th>Fotografía (seg)</th>
+                        <th>Revisión (seg)</th>
+                        <th>Impresión (seg)</th>
                     </tr>
                 </thead>
                 <tbody>
-                <!-- El 'for' loop itera sobre el diccionario que la vista le envía -->
                 {% for tipo_item_label, configs in configs_agrupadas.items %}
-                    <!-- 'configs' es la lista de objetos para ese tipo de ítem -->
                     {% for config in configs %}
                     <tr>
                         {% if forloop.first %}
@@ -30,21 +28,13 @@
                         {% endif %}
                         <td>{{ config.get_tipo_certificado_display }}</td>
                         {% with prefix=config.tipo_item|add:"_"|add:config.tipo_certificado %}
-                        <td><input type="number" step="1" min="0" class="form-control text-center" name="ingreso_{{ prefix }}" value="{% if config.tiempo_ingreso is not None %}{{ config.tiempo_ingreso|stringformat:'.0f' }}{% endif %}"></td>
-                        <td><input type="number" step="1" min="0" class="form-control text-center" name="foto_{{ prefix }}" value="{% if config.tiempo_fotografia is not None %}{{ config.tiempo_fotografia|stringformat:'.0f' }}{% endif %}"></td>
-                        <td><input type="number" step="1" min="0" class="form-control text-center" name="revision_{{ prefix }}" value="{% if config.tiempo_revision is not None %}{{ config.tiempo_revision|stringformat:'.0f' }}{% endif %}"></td>
-                        <td><input type="number" step="1" min="0" class="form-control text-center" name="impresion_{{ prefix }}" value="{% if config.tiempo_impresion is not None %}{{ config.tiempo_impresion|stringformat:'.0f' }}{% endif %}"></td>
+                        <td><input type="number" step="1" min="0" class="form-control text-center" name="ingreso_{{ prefix }}" value="{% if config.tiempo_ingreso is not None %}{{ config.tiempo_ingreso }}{% endif %}"></td>
+                        <td><input type="number" step="1" min="0" class="form-control text-center" name="foto_{{ prefix }}" value="{% if config.tiempo_fotografia is not None %}{{ config.tiempo_fotografia }}{% endif %}"></td>
+                        <td><input type="number" step="1" min="0" class="form-control text-center" name="revision_{{ prefix }}" value="{% if config.tiempo_revision is not None %}{{ config.tiempo_revision }}{% endif %}"></td>
+                        <td><input type="number" step="1" min="0" class="form-control text-center" name="impresion_{{ prefix }}" value="{% if config.tiempo_impresion is not None %}{{ config.tiempo_impresion }}{% endif %}"></td>
                         {% endwith %}
                     </tr>
                     {% endfor %}
-                {% empty %}
-                    <tr>
-                        <td colspan="6" class="text-center text-muted p-4">
-                            No se encontraron configuraciones de tiempo en la base de datos.<br>
-                            Por favor, detén el servidor y ejecuta el comando:<br>
-                            <code>python manage.py crear_tiempos_default</code>
-                        </td>
-                    </tr>
                 {% endfor %}
                 </tbody>
             </table>

@@ -76,7 +76,7 @@
                             {% for foto in item.fotos.all %}
                             <div class="col-3 mb-3">
                                 <a href="{{ foto.imagen.url }}" target="_blank">
-                                    <img src="{{ foto.imagen.url }}" class="img-thumbnail" alt="Foto de {{ item.tipo_gema }}">
+                                    <img src="{{ foto.imagen.url }}" class="img-thumbnail" alt="Foto de {{ item.gema_principal }}">
                                 </a>
                             </div>
                             {% empty %}

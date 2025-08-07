@@ -68,28 +68,41 @@ class Item(models.Model):
         partes = []
         if self.que_es in ['VERBAL_A_GC', 'REIMPRESION']:
             return f"{self.get_que_es_display()} - Código: {self.codigo_referencia or 'N/A'}"
+        
         if self.que_es == 'JOYA':
-            partes.append(self.get_tipo_joya_display() or "Joya")
+            # Si es un SET, la descripción principal es "Set"
+            if self.tipo_joya == 'SET':
+                partes.append(self.get_tipo_joya_display())
+            else:
+                partes.append(self.get_tipo_joya_display() or "Joya")
+            
             if self.metal: partes.append(f"en {self.get_metal_display()}")
-            if self.gema_principal: partes.append(f"con {self.gema_principal}")
+            
+            # ¡LÓGICA MEJORADA! Se añade la gema principal y los componentes del set.
+            if self.gema_principal:
+                partes.append(f"con {self.gema_principal}")
+            if self.componentes_set:
+                componentes_limpios = self.componentes_set.replace(',', ', ')
+                partes.append(f"({componentes_limpios})")
+
         elif self.que_es == 'LOTE':
             partes.append(f"Lote de {self.cantidad_gemas or ''} {pluralizar(self.gema_principal)}")
         else:
             partes.append(self.gema_principal or "Gema")
+        
         if self.que_es != 'LOTE':
             if self.forma_gema and self.forma_gema != 'Ninguno':
-                forma = self.forma_gema_otra if self.forma_gema == 'OTRO' else self.forma_gema
-                partes.append(f"en talla {forma}")
+                # CORRECCIÓN: Se elimina la referencia a 'forma_gema_otra' que no existía.
+                partes.append(f"en talla {self.forma_gema}")
+
         if self.peso_gema: partes.append(f"de {self.peso_gema} cts")
-        if self.componentes_set: partes.append(f"({self.componentes_set.replace(',', ', ')})")
+        
         if self.comentarios:
             if partes: partes[-1] += '.'
             partes.append(f"Comentarios: {self.comentarios}")
+            
         return " ".join(partes).strip()
     
-    def __str__(self):
-        return f"Item {self.numero_item} ({self.gema_principal or self.codigo_referencia}) de la Orden {self.orden.id}"
-
 class FotoItem(models.Model):
     item = models.ForeignKey(Item, related_name='fotos', on_delete=models.CASCADE)
     imagen = models.ImageField(upload_to=get_foto_upload_path)
@@ -116,11 +129,11 @@ class ConfiguracionTiempos(models.Model):
     tipo_certificado = models.CharField(max_length=15, choices=TIPO_CERT_CHOICES)
     
     # Mantenemos la configuración robusta de permitir nulos, que es más segura
-    tiempo_ingreso = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    tiempo_fotografia = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    tiempo_revision = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    tiempo_impresion = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-
+    tiempo_ingreso = models.PositiveIntegerField(null=True, blank=True, help_text="Tiempo en segundos")
+    tiempo_fotografia = models.PositiveIntegerField(null=True, blank=True, help_text="Tiempo en segundos")
+    tiempo_revision = models.PositiveIntegerField(null=True, blank=True, help_text="Tiempo en segundos")
+    tiempo_impresion = models.PositiveIntegerField(null=True, blank=True, help_text="Tiempo en segundos")
+    
     class Meta:
         verbose_name = "Configuración de Tiempo"
         verbose_name_plural = "Configuraciones de Tiempos"
