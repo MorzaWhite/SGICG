@@ -25,6 +25,26 @@ class Orden(models.Model):
         except ValueError: return None
         if idx < len(etapas) - 1: return etapas[idx + 1]
         return None
+    
+    def get_progreso_porcentaje(self):
+        """Calcula el porcentaje de progreso de la orden."""
+        etapas = ['INGRESO', 'FOTOGRAFIA', 'REVISION', 'IMPRESION', 'FINALIZADA']
+        try:
+            indice_actual = etapas.index(self.estado_actual)
+            return (indice_actual / (len(etapas) - 1)) * 100
+        except ValueError:
+            return 0
+
+    def tiene_items_retrasados(self):
+        """Indica si la orden tiene ítems retrasados."""
+        return any(item.esta_retrasado for item in self.items.all())
+
+    def get_tiempo_estimado_total(self):
+        """Calcula el tiempo estimado total de todos los ítems."""
+        if not self.items.exists():
+            return None
+        ultimo_item = self.items.last()
+        return ultimo_item.fecha_limite_etapa if ultimo_item else None
 
 class Item(models.Model):
     TIPO_CERT_CHOICES = [('GC_SENCILLA', 'GC Sencilla'), ('GC_COMPLETA', 'GC Completa'), ('ESCRITO', 'Escrito'), ('DIAMANTE', 'Diamante')]
@@ -103,6 +123,33 @@ class Item(models.Model):
             
         return " ".join(partes).strip()
     
+    @property
+    def esta_retrasado(self):
+        """Indica si el ítem está retrasado respecto a su fecha límite."""
+        if not self.fecha_limite_etapa:
+            return False
+        return timezone.now() > self.fecha_limite_etapa
+
+    @property
+    def tiempo_restante_segundos(self):
+        """Calcula el tiempo restante en segundos."""
+        if not self.fecha_limite_etapa:
+            return None
+        delta = self.fecha_limite_etapa - timezone.now()
+        return max(0, int(delta.total_seconds()))
+
+    @property
+    def estado_urgencia(self):
+        """Devuelve el estado de urgencia del ítem."""
+        if self.esta_retrasado:
+            return 'retrasado'
+        elif self.tiempo_restante_segundos and self.tiempo_restante_segundos < 3600:  # < 1 hora
+            return 'urgente'
+        elif self.tiempo_restante_segundos and self.tiempo_restante_segundos < 86400:  # < 24 horas
+            return 'proximo'
+        return 'normal'
+    
+
 class FotoItem(models.Model):
     item = models.ForeignKey(Item, related_name='fotos', on_delete=models.CASCADE)
     imagen = models.ImageField(upload_to=get_foto_upload_path)
