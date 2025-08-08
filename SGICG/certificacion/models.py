@@ -166,6 +166,7 @@ class Item(models.Model):
     # Archivos
     nombre_excel = models.CharField(max_length=255, blank=True, null=True)
     qr_cargado = models.ImageField(upload_to=get_qr_upload_path, blank=True, null=True)
+    texto_para_copiar = models.TextField(blank=True, null=True, help_text="Texto formateado con todos los datos del ítem")
     
     class Meta:
         ordering = ['numero_item']
@@ -189,59 +190,85 @@ class Item(models.Model):
     
     @property
     def descripcion_texto(self):
-        """Genera una descripción textual del ítem"""
-        def pluralizar(nombre):
-            if not nombre:
-                return "gemas"
-            if nombre.lower().endswith(('a', 'e', 'i', 'o', 'u', 'á', 'é', 'í', 'ó', 'ú')):
-                return nombre + "s"
-            else:
-                return nombre + "es"
-
-        partes = []
+        """Genera una descripción textual del ítem en formato natural"""
         
         # Casos especiales
         if self.que_es in ['VERBAL_A_GC', 'REIMPRESION']:
-            return f"{self.get_que_es_display()} - Código: {self.codigo_referencia or 'N/A'}"
+            que_es_display = {
+                'VERBAL_A_GC': 'Verbal a GC',
+                'REIMPRESION': 'Reimpresión'
+            }
+            return f"{que_es_display.get(self.que_es, self.que_es)} - Código: {self.codigo_referencia or 'N/A'}"
         
-        # Descripción principal
-        if self.que_es == 'JOYA':
-            if self.tipo_joya == 'SET':
-                partes.append(self.get_tipo_joya_display())
+        # Construcción del texto natural
+        partes = []
+        
+        # Agregar cantidad si es mayor a 1
+        if self.cantidad_gemas and self.cantidad_gemas > 1:
+            if self.cantidad_gemas == 2:
+                partes.append("Par de")
+            elif self.cantidad_gemas == 3:
+                partes.append("Trío de")
             else:
-                partes.append(self.get_tipo_joya_display() or "Joya")
-            
-            if self.metal:
-                partes.append(f"en {self.get_metal_display()}")
-            
-            if self.gema_principal:
-                partes.append(f"con {self.gema_principal}")
-            
-            if self.componentes_set:
-                componentes_limpios = self.componentes_set.replace(',', ', ')
-                partes.append(f"({componentes_limpios})")
-
-        elif self.que_es == 'LOTE':
-            cantidad = self.cantidad_gemas or ''
-            partes.append(f"Lote de {cantidad} {pluralizar(self.gema_principal)}")
-        else:
-            partes.append(self.gema_principal or "Gema")
+                partes.append(f"{self.cantidad_gemas}")
         
-        # Forma de la gema (solo si no es LOTE)
-        if self.que_es != 'LOTE' and self.forma_gema and self.forma_gema != 'Ninguno':
+        # Gema principal
+        if self.gema_principal:
+            gema = self.gema_principal
+            
+            # Para lotes, pluralizar
+            if self.que_es == 'LOTE' and self.cantidad_gemas and self.cantidad_gemas > 1:
+                if gema.lower().endswith(('a', 'e', 'i', 'o', 'u', 'á', 'é', 'í', 'ó', 'ú')):
+                    gema = gema.lower() + "s"
+                else:
+                    gema = gema.lower() + "es"
+            else:
+                gema = gema  # Mantener mayúscula inicial
+            
+            partes.append(gema)
+        
+        # Detalles de joya
+        if self.que_es == 'JOYA':
+            # Metal
+            if self.metal:
+                metal_display = {
+                    'ORO': 'oro', 'ORO_AMARILLO': 'oro amarillo', 'ORO_ROSA': 'oro rosa',
+                    'PLATA': 'plata', 'BLANCO': 'oro blanco', 'ROSA': 'oro rosa', 'NEGRO': 'oro negro'
+                }
+                metal_texto = metal_display.get(self.metal, self.metal.lower())
+                partes.append(f"en {metal_texto}")
+            
+            # Tipo de joya
+            if self.tipo_joya:
+                tipo_joya_display = {
+                    'ANILLO': 'anillo', 'DIJE': 'dije', 'TOPOS': 'topos',
+                    'PULSERA': 'pulsera', 'PULSERA_TENIS': 'pulsera tenis', 'SET': 'set'
+                }
+                tipo_texto = tipo_joya_display.get(self.tipo_joya, self.tipo_joya.lower())
+                
+                # Si es set, agregar componentes
+                if self.tipo_joya == 'SET' and self.componentes_set:
+                    componentes = self.componentes_set.replace(',', ', ')
+                    partes.append(f"{tipo_texto} ({componentes})")
+                else:
+                    partes.append(tipo_texto)
+        
+        # Forma de la gema
+        if self.forma_gema and self.forma_gema != 'Ninguno':
             partes.append(f"en talla {self.forma_gema}")
-
+        
         # Peso
         if self.peso_gema:
             partes.append(f"de {self.peso_gema} cts")
         
-        # Comentarios
+        # Construir el texto final
+        texto_base = " ".join(partes)
+        
+        # Agregar comentarios si existen
         if self.comentarios:
-            if partes:
-                partes[-1] += '.'
-            partes.append(f"Comentarios: {self.comentarios}")
-            
-        return " ".join(partes).strip()
+            texto_base += f". {self.comentarios}"
+        
+        return texto_base
     
     @property
     def esta_retrasado(self):
@@ -289,6 +316,7 @@ class Item(models.Model):
         
         if self.peso_gema is not None and self.peso_gema <= 0:
             raise ValidationError("El peso de la gema debe ser positivo")
+        
 
 
 class FotoItem(models.Model):
@@ -349,7 +377,7 @@ class ConfiguracionTiempos(models.Model):
     )
     
     # Campos de auditoría
-    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_creacion = models.DateTimeField(default=timezone.now)
     fecha_modificacion = models.DateTimeField(auto_now=True)
     
     class Meta:

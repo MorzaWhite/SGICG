@@ -285,20 +285,56 @@ class SubirQRForm(SubirArchivoForm):
         self.fields['archivo'].help_text = 'Imagen del código QR (JPG, PNG, WEBP - máximo 5MB)'
 
 
+class MultipleFileInput(forms.ClearableFileInput):
+    """Widget personalizado para múltiples archivos"""
+    allow_multiple_selected = True
+    
+    def __init__(self, attrs=None):
+        if attrs is None:
+            attrs = {}
+        attrs['multiple'] = True
+        super().__init__(attrs)
+
+    def value_from_datadict(self, data, files, name):
+        upload = files.getlist(name)
+        if not upload:
+            return None
+        return upload
+
+
+class MultipleFileField(forms.FileField):
+    """Campo personalizado para múltiples archivos"""
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("widget", MultipleFileInput())
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        single_file_clean = super().clean
+        if isinstance(data, (list, tuple)):
+            result = [single_file_clean(d, initial) for d in data]
+        else:
+            result = single_file_clean(data, initial)
+        return result
+
+
 class SubirFotosForm(forms.Form):
     """Formulario específico para subir múltiples fotos profesionales"""
     
-    fotos = forms.FileField(
-        widget=forms.ClearableFileInput(attrs={
+    fotos = MultipleFileField(
+        widget=MultipleFileInput(attrs={
             'class': 'form-control',
-            'multiple': True,
             'accept': 'image/*'
         }),
-        help_text='Seleccione múltiples fotos profesionales (máximo 10 archivos, 10MB cada uno)'
+        help_text='Seleccione múltiples fotos profesionales (máximo 10 archivos, 10MB cada uno)',
+        required=True
     )
     
     def clean_fotos(self):
-        fotos = self.files.getlist('fotos')
+        fotos = self.cleaned_data.get('fotos', [])
+        
+        # Si es un solo archivo, convertir a lista
+        if not isinstance(fotos, list):
+            fotos = [fotos] if fotos else []
         
         if not fotos:
             raise ValidationError('Debe seleccionar al menos una foto.')
@@ -311,6 +347,9 @@ class SubirFotosForm(forms.Form):
         max_size = 10 * 1024 * 1024  # 10MB por foto
         
         for i, foto in enumerate(fotos, 1):
+            if not foto:
+                continue
+                
             if hasattr(foto, 'content_type') and foto.content_type not in allowed_types:
                 raise ValidationError(f'Foto {i}: Solo se permiten archivos de imagen (JPG, PNG, WEBP).')
             

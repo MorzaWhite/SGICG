@@ -256,7 +256,7 @@ def dashboard(request):
 
 
 class CrearOrdenView(View):
-    """Vista optimizada para crear órdenes con validaciones mejoradas"""
+    """Vista optimizada para crear órdenes con captura completa de datos"""
     
     def get(self, request):
         form = OrdenForm()
@@ -264,7 +264,10 @@ class CrearOrdenView(View):
         return render(request, 'crear_orden.html', context)
     
     def post(self, request):
+        
+        
         form = OrdenForm(request.POST)
+        
         
         if not form.is_valid():
             context = self.get_context_data(form)
@@ -272,8 +275,10 @@ class CrearOrdenView(View):
         
         try:
             with transaction.atomic():
+                
                 # Validar datos de ítems
                 validation_result = self._validar_items_data(request.POST)
+                
                 if not validation_result['valido']:
                     messages.error(request, validation_result['error'])
                     context = self.get_context_data(form)
@@ -282,23 +287,29 @@ class CrearOrdenView(View):
                 # Crear orden con ítems
                 orden = self._crear_orden_con_items(form, request.POST)
                 
-                # Limpiar cache
-                cache.delete_many([
-                    f"tiempo_{key}" for key in cache.keys() if key.startswith('tiempo_')
-                ])
+                # Verificar que la orden se creó correctamente
+                if not orden or not orden.id:
+                    raise Exception("La orden no se creó correctamente")
                 
-                message = f"Orden {orden.numero_orden_facturacion} creada exitosamente con {orden.items.count()} ítems"
+                # Verificar que se crearon ítems
+                items_count = orden.items.count()
+                
+                if items_count == 0:
+                    raise Exception("No se crearon ítems para la orden")
+                
+                # Limpiar cache
+                cache.clear()
+                
+                message = f"Orden {orden.numero_orden_facturacion} creada exitosamente con {items_count} ítems"
                 messages.success(request, message)
-                logger.info(f"Orden creada: ID={orden.id}, Facturación={orden.numero_orden_facturacion}")
                 
                 return redirect('orden_creada_exito', orden_id=orden.id)
                 
         except ValidationError as e:
-            logger.warning(f"Error de validación al crear orden: {str(e)}")
             messages.error(request, f"Error de validación: {str(e)}")
         except Exception as e:
-            logger.error(f"Error inesperado al crear orden: {str(e)}")
-            messages.error(request, "Error interno. Contacta al administrador.")
+            import traceback
+            messages.error(request, f"Error interno: {str(e)}. Contacta al administrador.")
         
         context = self.get_context_data(form)
         return render(request, 'crear_orden.html', context)
@@ -316,12 +327,21 @@ class CrearOrdenView(View):
         if len(tipos_cert) > MAX_ITEMS_PER_ORDER:
             return {'valido': False, 'error': f'Máximo {MAX_ITEMS_PER_ORDER} ítems por orden'}
         
+        # Validar que las listas tengan la misma longitud
+        listas = [tipos_cert, que_es_list, gemas_principales, codigos_referencia]
+        longitudes = [len(lista) for lista in listas]
+        if not all(l == longitudes[0] for l in longitudes):
+            return {'valido': False, 'error': 'Error en datos de ítems: listas con longitudes diferentes'}
+        
         for i, (tipo_cert, que_es, gema_ppal, codigo_ref) in enumerate(zip(
             tipos_cert, que_es_list, gemas_principales, codigos_referencia
         ), start=1):
             
-            if not tipo_cert:
+            if not tipo_cert or not tipo_cert.strip():
                 return {'valido': False, 'error': f'El ítem {i} debe tener tipo de certificado'}
+            
+            if not que_es or not que_es.strip():
+                return {'valido': False, 'error': f'El ítem {i} debe tener definido "qué es"'}
             
             if que_es in ['VERBAL_A_GC', 'REIMPRESION']:
                 if not codigo_ref or not codigo_ref.strip():
@@ -334,27 +354,60 @@ class CrearOrdenView(View):
     
     def _crear_orden_con_items(self, form, post_data):
         """Crea la orden y todos sus ítems de forma transaccional"""
+        print("=== CREANDO ORDEN PRINCIPAL ===")
+        
+        # Crear la orden
         orden = form.save(commit=False)
         orden.estado_actual = 'INGRESO'
+        orden.fecha_creacion = timezone.now()
         orden.save()
         
+        print(f"Orden guardada con ID: {orden.id}")
+        
         # Crear estructura de carpetas
-        FileManager.crear_carpeta_orden(orden.id)
+        try:
+            FileManager.crear_carpeta_orden(orden.id)
+            print("Carpeta creada")
+        except Exception as e:
+            print(f"Error creando carpeta: {e}")
+            pass
         
-        # Extraer y crear ítems
-        items_data = self._extraer_items_data(post_data)
+        # Extraer y crear ítems con datos completos
+        print("=== EXTRAYENDO DATOS DE ÍTEMS ===")
+        items_data = self._extraer_items_completos(post_data)
+        print(f"Items data extraídos: {len(items_data)}")
+        
         punto_de_partida = OrdenManager.get_ultimo_tiempo_ocupado()
+        print(f"Punto de partida: {punto_de_partida}")
         
+        items_creados = 0
         for i, data in enumerate(items_data, start=1):
-            item = self._crear_item(orden, i, data, punto_de_partida)
-            # Actualizar punto de partida para el siguiente ítem
-            if item.fecha_limite_etapa:
-                punto_de_partida = item.fecha_limite_etapa
+            print(f"=== CREANDO ÍTEM {i} ===")
+            print(f"Data del ítem: {data}")
+            try:
+                item = self._crear_item_completo(orden, i, data, punto_de_partida)
+                if item and item.id:
+                    items_creados += 1
+                    print(f"Ítem {i} creado con ID: {item.id}")
+                    # Actualizar punto de partida para el siguiente ítem
+                    if item.fecha_limite_etapa:
+                        punto_de_partida = item.fecha_limite_etapa
+                else:
+                    print(f"ERROR: Ítem {i} no se creó correctamente")
+            except Exception as e:
+                print(f"Error creando ítem {i}: {e}")
+                import traceback
+                print(f"Traceback: {traceback.format_exc()}")
+                raise e
         
+        print(f"=== ÍTEMS CREADOS: {items_creados} ===")
+        
+        # Recargar la orden para asegurar que tenga los items
+        orden.refresh_from_db()
         return orden
     
-    def _extraer_items_data(self, post_data):
-        """Extrae y organiza los datos de todos los ítems"""
+    def _extraer_items_completos(self, post_data):
+        """Extrae todos los datos del formulario incluyendo cantidades y componentes"""
         campos_simples = [
             'tipo_certificado', 'que_es', 'codigo_referencia', 'tipo_joya',
             'metal', 'gema_principal', 'forma_gema', 'peso_gema', 'comentarios'
@@ -365,6 +418,7 @@ class CrearOrdenView(View):
         
         for i in range(max_items):
             item_data = {}
+            item_index = i + 1
             
             # Extraer campos simples
             for campo in campos_simples:
@@ -372,16 +426,79 @@ class CrearOrdenView(View):
                 item_data[campo] = valores[i].strip() if i < len(valores) and valores[i] else ''
             
             # Extraer componentes del set
-            componentes_key = f'componentes_set_{i+1}'
+            componentes_key = f'componentes_set_{item_index}'
             componentes = post_data.getlist(componentes_key)
             item_data['componentes_set'] = [c for c in componentes if c]
             
-            items_data.append(item_data)
+            # Extraer cantidades según tipo de certificado
+            item_data['cantidad_info'] = self._extraer_cantidad_info(post_data, item_index, item_data['tipo_certificado'])
+            
+            # Solo agregar items que tengan al menos tipo de certificado
+            if item_data.get('tipo_certificado'):
+                items_data.append(item_data)
         
         return items_data
     
-    def _crear_item(self, orden, numero_item, data, punto_partida):
-        """Crea un ítem individual con cálculo optimizado de tiempos"""
+    def _extraer_cantidad_info(self, post_data, item_index, tipo_cert):
+        """Extrae la información de cantidad específica según el tipo de certificado"""
+        cantidad_info = {
+            'tipo': None,
+            'valor': None,
+            'detalle': ''
+        }
+        
+        if tipo_cert in ['GC_SENCILLA', 'GC_COMPLETA']:
+            # Radio buttons para GC
+            gc_key = f'cantidad_gc_group_{item_index}'
+            seleccion = post_data.get(gc_key, '1')
+            if seleccion == '1':
+                cantidad_info = {'tipo': 'individual', 'valor': 1, 'detalle': '1 gema'}
+            elif seleccion == '2':
+                cantidad_info = {'tipo': 'par', 'valor': 2, 'detalle': 'Par de gemas'}
+            elif seleccion == '3':
+                cantidad_info = {'tipo': 'trio', 'valor': 3, 'detalle': 'Trío de gemas'}
+            elif seleccion == 'varios':
+                varios_key = f'cantidad_gemas_varios_{item_index}'
+                cantidad_varios = post_data.get(varios_key, '')
+                cantidad_info = {'tipo': 'varios', 'valor': cantidad_varios, 'detalle': f'{cantidad_varios} gemas' if cantidad_varios else 'Varias gemas'}
+                
+        elif tipo_cert == 'ESCRITO':
+            # Checkboxes para ESCRITO
+            escrito_keys = [f'cantidad_escrito_chk_{item_index}']
+            cantidades = []
+            for key in escrito_keys:
+                valores = post_data.getlist(key)
+                cantidades.extend(valores)
+            
+            if 'varios' in cantidades:
+                varios_key = f'cantidad_gemas_varios_{item_index}'
+                cantidad_varios = post_data.get(varios_key, '')
+                cantidad_info = {'tipo': 'varios', 'valor': cantidad_varios, 'detalle': f'{cantidad_varios} gemas' if cantidad_varios else 'Varias gemas'}
+            else:
+                cantidades_num = [c for c in cantidades if c.isdigit()]
+                if cantidades_num:
+                    total = sum(int(c) for c in cantidades_num)
+                    cantidad_info = {'tipo': 'multiple', 'valor': total, 'detalle': f'{total} gemas ({"+" .join(cantidades_num)})'}
+                else:
+                    cantidad_info = {'tipo': 'individual', 'valor': 1, 'detalle': '1 gema'}
+                    
+        elif tipo_cert == 'DIAMANTE':
+            # Radio buttons para DIAMANTE
+            diamante_key = f'cantidad_diamante_group_{item_index}'
+            seleccion = post_data.get(diamante_key, '1')
+            if seleccion == '1':
+                cantidad_info = {'tipo': 'individual', 'valor': 1, 'detalle': '1 gema'}
+            elif seleccion == '2':
+                cantidad_info = {'tipo': 'par', 'valor': 2, 'detalle': 'Par de gemas'}
+            elif seleccion == 'varios':
+                varios_key = f'cantidad_gemas_varios_{item_index}'
+                cantidad_varios = post_data.get(varios_key, '')
+                cantidad_info = {'tipo': 'varios', 'valor': cantidad_varios, 'detalle': f'{cantidad_varios} gemas' if cantidad_varios else 'Varias gemas'}
+        
+        return cantidad_info
+    
+    def _crear_item_completo(self, orden, numero_item, data, punto_partida):
+        """Crea un ítem con todos los datos del formulario y genera el texto completo"""
         try:
             # Determinar tipo de ítem para cálculos
             item_type_key = self._get_item_type_key(data)
@@ -397,6 +514,12 @@ class CrearOrdenView(View):
             peso_gema = self._parse_peso_gema(data.get('peso_gema'))
             componentes_str = self._format_componentes_set(data.get('componentes_set', []))
             
+            # Determinar cantidad de gemas
+            cantidad_gemas = self._determinar_cantidad_gemas(data['cantidad_info'])
+            
+            # Generar texto completo para copiar
+            texto_para_copiar = self._generar_texto_completo(data, numero_item)
+            
             # Crear ítem
             item = Item(
                 orden=orden,
@@ -406,7 +529,7 @@ class CrearOrdenView(View):
                 que_es=data['que_es'],
                 codigo_referencia=data['codigo_referencia'] if data['que_es'] in ['VERBAL_A_GC', 'REIMPRESION'] else None,
                 tipo_joya=data['tipo_joya'] if data['que_es'] == 'JOYA' else None,
-                cantidad_gemas=1,  # Por ahora siempre 1
+                cantidad_gemas=cantidad_gemas,
                 metal=data['metal'] if data['que_es'] == 'JOYA' else None,
                 componentes_set=componentes_str,
                 gema_principal=data['gema_principal'] if data['que_es'] not in ['VERBAL_A_GC', 'REIMPRESION'] else None,
@@ -419,14 +542,116 @@ class CrearOrdenView(View):
             item.full_clean()
             item.save()
             
+            # Guardar el texto después de crear el item (temporal hasta que agregues el campo)
+            try:
+                if hasattr(item, 'texto_para_copiar'):
+                    item.texto_para_copiar = texto_para_copiar
+                    item.save()
+            except:
+                pass  # Si no existe el campo, continúa sin error
+            
             return item
             
         except ValidationError as e:
-            logger.error(f"Error de validación en ítem {numero_item}: {e}")
-            raise
+            raise ValidationError(f"Error en ítem {numero_item}: {e}")
         except Exception as e:
-            logger.error(f"Error creando ítem {numero_item}: {e}")
-            raise
+            raise Exception(f"Error creando ítem {numero_item}: {e}")
+    
+    def _determinar_cantidad_gemas(self, cantidad_info):
+        """Determina la cantidad numérica de gemas basada en la información de cantidad"""
+        if not cantidad_info or not cantidad_info.get('valor'):
+            return 1
+            
+        try:
+            return int(cantidad_info['valor']) if str(cantidad_info['valor']).isdigit() else 1
+        except (ValueError, TypeError):
+            return 1
+    
+    def _generar_texto_completo(self, data, numero_item):
+        """Genera el texto completo del ítem para copiar en formato natural"""
+        
+        # Casos especiales
+        if data['que_es'] in ['VERBAL_A_GC', 'REIMPRESION']:
+            que_es_display = {
+                'VERBAL_A_GC': 'Verbal a GC',
+                'REIMPRESION': 'Reimpresión'
+            }
+            return f"{que_es_display.get(data['que_es'], data['que_es'])} - Código: {data.get('codigo_referencia', 'N/A')}"
+        
+        # Construcción del texto natural
+        partes = []
+        
+        # Agregar cantidad si es relevante
+        cantidad_info = data.get('cantidad_info', {})
+        if cantidad_info.get('tipo') in ['par', 'trio', 'varios', 'multiple'] and cantidad_info.get('valor'):
+            if cantidad_info['tipo'] == 'par':
+                partes.append("Par de")
+            elif cantidad_info['tipo'] == 'trio':
+                partes.append("Trío de")
+            elif cantidad_info['tipo'] == 'varios' and cantidad_info.get('valor'):
+                partes.append(f"{cantidad_info['valor']}")
+            elif cantidad_info['tipo'] == 'multiple' and cantidad_info.get('valor'):
+                partes.append(f"{cantidad_info['valor']}")
+        
+        # Gema principal
+        if data.get('gema_principal'):
+            gema = data['gema_principal']
+            
+            # Para lotes, pluralizar
+            if data['que_es'] == 'LOTE':
+                if gema.lower().endswith(('a', 'e', 'i', 'o', 'u', 'á', 'é', 'í', 'ó', 'ú')):
+                    gema = gema + "s"
+                else:
+                    gema = gema + "es"
+            
+            partes.append(gema.lower())
+        
+        # Detalles de joya
+        if data['que_es'] == 'JOYA':
+            # Metal
+            if data.get('metal'):
+                metal_display = {
+                    'ORO': 'oro', 'ORO_AMARILLO': 'oro amarillo', 'ORO_ROSA': 'oro rosa',
+                    'PLATA': 'plata', 'BLANCO': 'oro blanco', 'ROSA': 'oro rosa', 'NEGRO': 'oro negro'
+                }
+                metal_texto = metal_display.get(data['metal'], data['metal'].lower())
+                partes.append(f"en {metal_texto}")
+            
+            # Tipo de joya
+            if data.get('tipo_joya'):
+                tipo_joya_display = {
+                    'ANILLO': 'anillo', 'DIJE': 'dije', 'TOPOS': 'topos',
+                    'PULSERA': 'pulsera', 'PULSERA_TENIS': 'pulsera tenis', 'SET': 'set'
+                }
+                tipo_texto = tipo_joya_display.get(data['tipo_joya'], data['tipo_joya'].lower())
+                
+                # Si es set, agregar componentes
+                if data['tipo_joya'] == 'SET' and data.get('componentes_set'):
+                    componentes = ', '.join(data['componentes_set'])
+                    partes.append(f"{tipo_texto} ({componentes})")
+                else:
+                    partes.append(tipo_texto)
+        
+        # Forma de la gema
+        if data.get('forma_gema') and data['forma_gema'] != 'Ninguno':
+            partes.append(f"en talla {data['forma_gema']}")
+        
+        # Peso
+        if data.get('peso_gema'):
+            partes.append(f"de {data['peso_gema']} cts")
+        
+        # Construir el texto final
+        texto_base = " ".join(partes)
+        
+        # Capitalizar la primera letra
+        if texto_base:
+            texto_base = texto_base[0].upper() + texto_base[1:]
+        
+        # Agregar comentarios si existen
+        if data.get('comentarios'):
+            texto_base += f". {data['comentarios']}"
+        
+        return texto_base
     
     def _get_item_type_key(self, data):
         """Determina la clave del tipo de ítem para cálculos"""
@@ -441,17 +666,15 @@ class CrearOrdenView(View):
     
     def _parse_peso_gema(self, peso_str):
         """Parsea el peso de la gema de forma segura"""
-        if not peso_str:
+        if not peso_str or not peso_str.strip():
             return None
         
         try:
             peso = Decimal(str(peso_str).strip())
             if peso <= 0:
-                logger.warning(f"Peso de gema inválido (negativo): {peso_str}")
                 return None
             return peso
         except (InvalidOperation, ValueError, TypeError):
-            logger.warning(f"Peso de gema inválido (formato): {peso_str}")
             return None
     
     def _format_componentes_set(self, componentes_list):
@@ -485,7 +708,7 @@ class CrearOrdenView(View):
                 'Espesartita - Piropo', 'Zirconia cubica', 'Diamante', 'Esmeralda'
             ]
             gemas_principales = sorted(gemas_principales)
-            cache.set(gemas_cache_key, gemas_principales, CACHE_TIMEOUT * 24)  # Cache por 24 horas
+            cache.set(gemas_cache_key, gemas_principales, CACHE_TIMEOUT * 24)
         
         formas_gema = cache.get(formas_cache_key)
         if formas_gema is None:
@@ -513,7 +736,7 @@ def avanzar_etapa(request, orden_id):
     if request.method != 'POST':
         messages.error(request, "Método no permitido")
         return redirect('dashboard')
-    
+        
     try:
         with transaction.atomic():
             orden = get_object_or_404(
@@ -535,7 +758,7 @@ def avanzar_etapa(request, orden_id):
             tiempo_total_a_restar = 0
             
             for item in orden.items.all():
-                item_type_key = item.que_es
+                # Determinar el tipo de ítem correctamente
                 if item.que_es == 'JOYA' and item.tipo_joya == 'SET':
                     item_type_key = 'SET'
                 elif item.que_es == 'PIEDRA':
@@ -569,16 +792,10 @@ def avanzar_etapa(request, orden_id):
             
             orden.save()
             
-            # Limpiar cache relacionado
-            cache.delete_many([
-                key for key in cache.keys() 
-                if key.startswith(('tiempo_', 'orden_', 'stats_'))
-            ])
+            # Limpiar cache relacionado (usando cache.clear() que sí existe)
+            cache.clear()
             
-            # Log y mensaje de éxito
-            logger.info(
-                f"Orden {orden.numero_orden_facturacion} avanzó de {etapa_anterior} a {proxima_etapa}"
-            )
+            # Mensaje de éxito
             messages.success(
                 request,
                 f"Orden {orden.numero_orden_facturacion} avanzó a {orden.get_estado_actual_display()}"
@@ -587,8 +804,7 @@ def avanzar_etapa(request, orden_id):
         return redirect('dashboard')
         
     except Exception as e:
-        logger.error(f"Error al avanzar etapa de orden {orden_id}: {str(e)}")
-        messages.error(request, "Error al avanzar la etapa. Intente nuevamente.")
+        messages.error(request, f"Error al avanzar la etapa: {str(e)}")
         return redirect('dashboard')
 
 
@@ -942,22 +1158,22 @@ def orden_creada_exito(request, orden_id):
         
         ultimo_item = orden.items.order_by('fecha_limite_etapa').last()
         
-        data = {
-            'id': orden.id,
-            'numero_orden_facturacion': orden.numero_orden_facturacion,
-            'estado_actual': orden.estado_actual,
-            'estado_display': orden.get_estado_actual_display(),
+        context = {
+            'orden': orden,
             'items_count': orden.items.count(),
-            'fecha_limite': ultimo_item.fecha_limite_etapa.isoformat() if ultimo_item and ultimo_item.fecha_limite_etapa else None,
+            'fecha_limite': ultimo_item.fecha_limite_etapa if ultimo_item and ultimo_item.fecha_limite_etapa else None,
             'tiene_retrasados': orden.tiene_items_retrasados(),
             'progreso_porcentaje': orden.get_progreso_porcentaje(),
+            'items': orden.items.all(),  # Para mostrar la lista de items si es necesario
         }
         
-        return JsonResponse(data)
+        # Renderizar template HTML en lugar de JSON
+        return render(request, 'orden_creada_exito.html', context)
         
     except Exception as e:
-        logger.error(f"Error en API orden status {orden_id}: {str(e)}")
-        return JsonResponse({'error': 'Error interno'}, status=500)
+        logger.error(f"Error en vista orden creada {orden_id}: {str(e)}")
+        messages.error(request, 'Error al mostrar los detalles de la orden.')
+        return redirect('crear_orden')  # Redirigir de vuelta al formulario
 
 
 def api_estadisticas_dashboard(request):
