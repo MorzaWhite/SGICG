@@ -1,33 +1,70 @@
 # certificacion/models.py
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 from pathlib import Path
 import os
 
 def get_qr_upload_path(instance, filename):
-    orden_folder = f"ORDEN-{instance.orden.id:04d}"; item_folder = f"ITEM-{instance.numero_item}"
+    """Genera la ruta para subir archivos QR"""
+    orden_folder = f"ORDEN-{instance.orden.id:04d}"
+    item_folder = f"ITEM-{instance.numero_item}"
     return os.path.join(orden_folder, item_folder, filename)
 
 def get_foto_upload_path(instance, filename):
-    orden_folder = f"ORDEN-{instance.item.orden.id:04d}"; item_folder = f"ITEM-{instance.item.numero_item}"
+    """Genera la ruta para subir fotos"""
+    orden_folder = f"ORDEN-{instance.item.orden.id:04d}"
+    item_folder = f"ITEM-{instance.item.numero_item}"
     return os.path.join(orden_folder, item_folder, filename)
 
 class Orden(models.Model):
-    ETAPAS = [('INGRESO', 'Ingreso'), ('FOTOGRAFIA', 'Fotografía'), ('REVISION', 'Revisión'), ('IMPRESION', 'Impresión'), ('FINALIZADA', 'Finalizada')]
-    numero_orden_facturacion = models.CharField(max_length=100, unique=True, verbose_name="Número de Orden (Facturación)")
-    estado_actual = models.CharField(max_length=20, choices=ETAPAS, default='INGRESO')
-    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    """Modelo principal para las órdenes de certificación"""
+    
+    ETAPAS = [
+        ('INGRESO', 'Ingreso'),
+        ('FOTOGRAFIA', 'Fotografía'),
+        ('REVISION', 'Revisión'),
+        ('IMPRESION', 'Impresión'),
+        ('FINALIZADA', 'Finalizada')
+    ]
+    
+    numero_orden_facturacion = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="Número de Orden (Facturación)",
+        db_index=True
+    )
+    estado_actual = models.CharField(
+        max_length=20,
+        choices=ETAPAS,
+        default='INGRESO',
+        db_index=True
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True, db_index=True)
     fecha_cierre = models.DateTimeField(blank=True, null=True)
-    def __str__(self): return f"Orden {self.id} - {self.numero_orden_facturacion}"
+    
+    class Meta:
+        ordering = ['-fecha_creacion']
+        indexes = [
+            models.Index(fields=['estado_actual', 'fecha_creacion']),
+        ]
+
+    def __str__(self):
+        return f"Orden {self.id} - {self.numero_orden_facturacion}"
+    
     def get_proxima_etapa(self):
-        etapas = [e[0] for e in self.ETAPAS];
-        try: idx = etapas.index(self.estado_actual)
-        except ValueError: return None
-        if idx < len(etapas) - 1: return etapas[idx + 1]
+        """Obtiene la próxima etapa o None si ya está finalizada"""
+        etapas = [e[0] for e in self.ETAPAS]
+        try:
+            idx = etapas.index(self.estado_actual)
+            if idx < len(etapas) - 1:
+                return etapas[idx + 1]
+        except ValueError:
+            pass
         return None
     
     def get_progreso_porcentaje(self):
-        """Calcula el porcentaje de progreso de la orden."""
+        """Calcula el porcentaje de progreso de la orden"""
         etapas = ['INGRESO', 'FOTOGRAFIA', 'REVISION', 'IMPRESION', 'FINALIZADA']
         try:
             indice_actual = etapas.index(self.estado_actual)
@@ -36,103 +73,186 @@ class Orden(models.Model):
             return 0
 
     def tiene_items_retrasados(self):
-        """Indica si la orden tiene ítems retrasados."""
-        return any(item.esta_retrasado for item in self.items.all())
+        """Indica si la orden tiene ítems retrasados"""
+        return self.items.filter(
+            fecha_limite_etapa__lt=timezone.now()
+        ).exists()
 
     def get_tiempo_estimado_total(self):
-        """Calcula el tiempo estimado total de todos los ítems."""
-        if not self.items.exists():
-            return None
-        ultimo_item = self.items.last()
+        """Calcula el tiempo estimado total de todos los ítems"""
+        ultimo_item = self.items.order_by('fecha_limite_etapa').last()
         return ultimo_item.fecha_limite_etapa if ultimo_item else None
 
+    def get_descripcion_completa(self):
+        """Obtiene una descripción completa de todos los ítems"""
+        items_desc = []
+        for item in self.items.all():
+            items_desc.append(f"Item {item.numero_item}: {item.descripcion_texto}")
+        return "; ".join(items_desc)
+
+
 class Item(models.Model):
-    TIPO_CERT_CHOICES = [('GC_SENCILLA', 'GC Sencilla'), ('GC_COMPLETA', 'GC Completa'), ('ESCRITO', 'Escrito'), ('DIAMANTE', 'Diamante')]
-    QUE_ES_CHOICES = [('JOYA', 'Joya'), ('LOTE', 'Lote de Gemas'), ('PIEDRA', 'Piedra(s) Suelta(s)'), ('VERBAL_A_GC', 'Verbal a GC'), ('REIMPRESION', 'Reimpresión')]
-    TIPO_JOYA_CHOICES = [('ANILLO', 'Anillo'), ('DIJE', 'Dije'), ('TOPOS', 'Topos'), ('PULSERA', 'Pulsera'), ('PULSERA_TENIS', 'Pulsera Tenis'), ('SET', 'Set')]
-    METAL_CHOICES = [('ORO', 'Oro'), ('ORO_AMARILLO', 'Oro Amarillo'), ('ORO_ROSA', 'Oro Rosa'), ('PLATA', 'Plata'), ('BLANCO', 'Blanco'), ('ROSA', 'Rosa'), ('NEGRO', 'Negro')]
+    """Modelo para los ítems individuales de cada orden"""
+    
+    TIPO_CERT_CHOICES = [
+        ('GC_SENCILLA', 'GC Sencilla'),
+        ('GC_COMPLETA', 'GC Completa'),
+        ('ESCRITO', 'Escrito'),
+        ('DIAMANTE', 'Diamante')
+    ]
+    
+    QUE_ES_CHOICES = [
+        ('JOYA', 'Joya'),
+        ('LOTE', 'Lote de Gemas'),
+        ('PIEDRA', 'Piedra(s) Suelta(s)'),
+        ('VERBAL_A_GC', 'Verbal a GC'),
+        ('REIMPRESION', 'Reimpresión')
+    ]
+    
+    TIPO_JOYA_CHOICES = [
+        ('ANILLO', 'Anillo'),
+        ('DIJE', 'Dije'),
+        ('TOPOS', 'Topos'),
+        ('PULSERA', 'Pulsera'),
+        ('PULSERA_TENIS', 'Pulsera Tenis'),
+        ('SET', 'Set')
+    ]
+    
+    METAL_CHOICES = [
+        ('ORO', 'Oro'),
+        ('ORO_AMARILLO', 'Oro Amarillo'),
+        ('ORO_ROSA', 'Oro Rosa'),
+        ('PLATA', 'Plata'),
+        ('BLANCO', 'Blanco'),
+        ('ROSA', 'Rosa'),
+        ('NEGRO', 'Negro')
+    ]
 
     orden = models.ForeignKey(Orden, related_name='items', on_delete=models.CASCADE)
     numero_item = models.PositiveIntegerField()
-    fecha_limite_etapa = models.DateTimeField(blank=True, null=True)
+    fecha_limite_etapa = models.DateTimeField(blank=True, null=True, db_index=True)
     
-    tipo_certificado = models.CharField(max_length=15, choices=TIPO_CERT_CHOICES, default='GC_SENCILLA')
+    # Campos principales
+    tipo_certificado = models.CharField(
+        max_length=15,
+        choices=TIPO_CERT_CHOICES,
+        default='GC_SENCILLA'
+    )
     que_es = models.CharField(max_length=15, choices=QUE_ES_CHOICES, default='JOYA')
     codigo_referencia = models.CharField(max_length=100, blank=True, null=True)
-    tipo_joya = models.CharField(max_length=15, choices=TIPO_JOYA_CHOICES, blank=True, null=True)
+    
+    # Campos para joyas
+    tipo_joya = models.CharField(
+        max_length=15,
+        choices=TIPO_JOYA_CHOICES,
+        blank=True,
+        null=True
+    )
     metal = models.CharField(max_length=15, choices=METAL_CHOICES, blank=True, null=True)
     cantidad_gemas = models.PositiveIntegerField(blank=True, null=True, default=1)
     componentes_set = models.CharField(max_length=255, blank=True, null=True)
+    
+    # Campos para gemas
     gema_principal = models.CharField(max_length=100, blank=True, null=True)
     forma_gema = models.CharField(max_length=100, default='Ninguno')
-    peso_gema = models.DecimalField(max_digits=7, decimal_places=2, blank=True, null=True)
+    peso_gema = models.DecimalField(
+        max_digits=7,
+        decimal_places=2,
+        blank=True,
+        null=True
+    )
     comentarios = models.TextField(blank=True, null=True)
+    
+    # Archivos
     nombre_excel = models.CharField(max_length=255, blank=True, null=True)
     qr_cargado = models.ImageField(upload_to=get_qr_upload_path, blank=True, null=True)
     
+    class Meta:
+        ordering = ['numero_item']
+        unique_together = ['orden', 'numero_item']
+        indexes = [
+            models.Index(fields=['orden', 'fecha_limite_etapa']),
+        ]
+    
+    def __str__(self):
+        return f"Item {self.numero_item} - Orden {self.orden.numero_orden_facturacion}"
+    
     @property
     def unc_path_excel(self):
+        """Genera la ruta UNC para acceder al archivo Excel"""
         if self.nombre_excel:
-            orden_folder = f"ORDEN-{self.orden.id:04d}"; item_folder = f"ITEM-{self.numero_item}"
+            orden_folder = f"ORDEN-{self.orden.id:04d}"
+            item_folder = f"ITEM-{self.numero_item}"
             full_local_path = Path(settings.MEDIA_ROOT) / orden_folder / item_folder / self.nombre_excel
             return 'file:///' + full_local_path.as_posix()
         return None
     
     @property
     def descripcion_texto(self):
+        """Genera una descripción textual del ítem"""
         def pluralizar(nombre):
-            if not nombre: return "gemas"
-            if nombre.lower()[-1] in "aeiouáéíóú": return nombre + "s"
-            else: return nombre + "es"
+            if not nombre:
+                return "gemas"
+            if nombre.lower().endswith(('a', 'e', 'i', 'o', 'u', 'á', 'é', 'í', 'ó', 'ú')):
+                return nombre + "s"
+            else:
+                return nombre + "es"
 
         partes = []
+        
+        # Casos especiales
         if self.que_es in ['VERBAL_A_GC', 'REIMPRESION']:
             return f"{self.get_que_es_display()} - Código: {self.codigo_referencia or 'N/A'}"
         
+        # Descripción principal
         if self.que_es == 'JOYA':
-            # Si es un SET, la descripción principal es "Set"
             if self.tipo_joya == 'SET':
                 partes.append(self.get_tipo_joya_display())
             else:
                 partes.append(self.get_tipo_joya_display() or "Joya")
             
-            if self.metal: partes.append(f"en {self.get_metal_display()}")
+            if self.metal:
+                partes.append(f"en {self.get_metal_display()}")
             
-            # ¡LÓGICA MEJORADA! Se añade la gema principal y los componentes del set.
             if self.gema_principal:
                 partes.append(f"con {self.gema_principal}")
+            
             if self.componentes_set:
                 componentes_limpios = self.componentes_set.replace(',', ', ')
                 partes.append(f"({componentes_limpios})")
 
         elif self.que_es == 'LOTE':
-            partes.append(f"Lote de {self.cantidad_gemas or ''} {pluralizar(self.gema_principal)}")
+            cantidad = self.cantidad_gemas or ''
+            partes.append(f"Lote de {cantidad} {pluralizar(self.gema_principal)}")
         else:
             partes.append(self.gema_principal or "Gema")
         
-        if self.que_es != 'LOTE':
-            if self.forma_gema and self.forma_gema != 'Ninguno':
-                # CORRECCIÓN: Se elimina la referencia a 'forma_gema_otra' que no existía.
-                partes.append(f"en talla {self.forma_gema}")
+        # Forma de la gema (solo si no es LOTE)
+        if self.que_es != 'LOTE' and self.forma_gema and self.forma_gema != 'Ninguno':
+            partes.append(f"en talla {self.forma_gema}")
 
-        if self.peso_gema: partes.append(f"de {self.peso_gema} cts")
+        # Peso
+        if self.peso_gema:
+            partes.append(f"de {self.peso_gema} cts")
         
+        # Comentarios
         if self.comentarios:
-            if partes: partes[-1] += '.'
+            if partes:
+                partes[-1] += '.'
             partes.append(f"Comentarios: {self.comentarios}")
             
         return " ".join(partes).strip()
     
     @property
     def esta_retrasado(self):
-        """Indica si el ítem está retrasado respecto a su fecha límite."""
+        """Indica si el ítem está retrasado respecto a su fecha límite"""
         if not self.fecha_limite_etapa:
             return False
         return timezone.now() > self.fecha_limite_etapa
 
     @property
     def tiempo_restante_segundos(self):
-        """Calcula el tiempo restante en segundos."""
+        """Calcula el tiempo restante en segundos"""
         if not self.fecha_limite_etapa:
             return None
         delta = self.fecha_limite_etapa - timezone.now()
@@ -140,7 +260,7 @@ class Item(models.Model):
 
     @property
     def estado_urgencia(self):
-        """Devuelve el estado de urgencia del ítem."""
+        """Devuelve el estado de urgencia del ítem"""
         if self.esta_retrasado:
             return 'retrasado'
         elif self.tiempo_restante_segundos and self.tiempo_restante_segundos < 3600:  # < 1 hora
@@ -149,22 +269,53 @@ class Item(models.Model):
             return 'proximo'
         return 'normal'
     
+    def clean(self):
+        """Validaciones del modelo"""
+        from django.core.exceptions import ValidationError
+        
+        if self.que_es in ['VERBAL_A_GC', 'REIMPRESION']:
+            if not self.codigo_referencia:
+                raise ValidationError(
+                    "Los ítems de tipo Verbal a GC o Reimpresión requieren código de referencia"
+                )
+        else:
+            if not self.gema_principal:
+                raise ValidationError(
+                    "Los ítems deben tener una gema principal especificada"
+                )
+        
+        if self.que_es == 'JOYA' and not self.tipo_joya:
+            raise ValidationError("Las joyas deben tener un tipo especificado")
+        
+        if self.peso_gema is not None and self.peso_gema <= 0:
+            raise ValidationError("El peso de la gema debe ser positivo")
+
 
 class FotoItem(models.Model):
+    """Modelo para las fotos de los ítems"""
+    
     item = models.ForeignKey(Item, related_name='fotos', on_delete=models.CASCADE)
     imagen = models.ImageField(upload_to=get_foto_upload_path)
     fecha_subida = models.DateTimeField(auto_now_add=True)
-    def __str__(self): return f"Foto para {self.item}"
+    descripcion = models.CharField(max_length=255, blank=True, null=True)
+    
+    class Meta:
+        ordering = ['-fecha_subida']
+    
+    def __str__(self):
+        return f"Foto para {self.item}"
 
-
-# certificacion/models.py
 
 class ConfiguracionTiempos(models.Model):
-    TIPO_ITEM_CHOICES = [('PIEDRA', 'Piedra(s) Suelta(s)'), ('JOYA', 'Joya (General)'), ('SET', 'Set de Joyas'), ('LOTE', 'Lote de Gemas')]
+    """Modelo para la configuración de tiempos estimados por etapa"""
     
-    # --- CAMBIO CLAVE ---
-    # En lugar de referenciar a Item, definimos las opciones aquí directamente.
-    # Es crucial que coincidan con las de Item.
+    TIPO_ITEM_CHOICES = [
+        ('PIEDRA', 'Piedra(s) Suelta(s)'),
+        ('JOYA', 'Joya (General)'),
+        ('SET', 'Set de Joyas'),
+        ('LOTE', 'Lote de Gemas')
+    ]
+    
     TIPO_CERT_CHOICES = [
         ('GC_SENCILLA', 'GC Sencilla'),
         ('GC_COMPLETA', 'GC Completa'),
@@ -175,16 +326,68 @@ class ConfiguracionTiempos(models.Model):
     tipo_item = models.CharField(max_length=10, choices=TIPO_ITEM_CHOICES)
     tipo_certificado = models.CharField(max_length=15, choices=TIPO_CERT_CHOICES)
     
-    # Mantenemos la configuración robusta de permitir nulos, que es más segura
-    tiempo_ingreso = models.PositiveIntegerField(null=True, blank=True, help_text="Tiempo en segundos")
-    tiempo_fotografia = models.PositiveIntegerField(null=True, blank=True, help_text="Tiempo en segundos")
-    tiempo_revision = models.PositiveIntegerField(null=True, blank=True, help_text="Tiempo en segundos")
-    tiempo_impresion = models.PositiveIntegerField(null=True, blank=True, help_text="Tiempo en segundos")
+    # Tiempos en segundos - permitir nulos para mayor flexibilidad
+    tiempo_ingreso = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Tiempo en segundos"
+    )
+    tiempo_fotografia = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Tiempo en segundos"
+    )
+    tiempo_revision = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Tiempo en segundos"
+    )
+    tiempo_impresion = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Tiempo en segundos"
+    )
+    
+    # Campos de auditoría
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
     
     class Meta:
         verbose_name = "Configuración de Tiempo"
         verbose_name_plural = "Configuraciones de Tiempos"
         unique_together = ('tipo_item', 'tipo_certificado')
+        ordering = ['tipo_item', 'tipo_certificado']
 
     def __str__(self):
         return f"Tiempos para {self.get_tipo_item_display()} con certificado {self.get_tipo_certificado_display()}"
+    
+    def get_tiempo_total(self):
+        """Calcula el tiempo total sumando todas las etapas"""
+        total = 0
+        for field in ['tiempo_ingreso', 'tiempo_fotografia', 'tiempo_revision', 'tiempo_impresion']:
+            valor = getattr(self, field)
+            if valor is not None:
+                total += valor
+        return total
+    
+    def clean(self):
+        """Validaciones del modelo"""
+        from django.core.exceptions import ValidationError
+        
+        # Verificar que al menos un tiempo esté definido
+        tiempos = [self.tiempo_ingreso, self.tiempo_fotografia, self.tiempo_revision, self.tiempo_impresion]
+        if all(t is None for t in tiempos):
+            raise ValidationError("Debe definir al menos un tiempo para una etapa")
+        
+        # Verificar límites razonables
+        for field_name, valor in [
+            ('tiempo_ingreso', self.tiempo_ingreso),
+            ('tiempo_fotografia', self.tiempo_fotografia),
+            ('tiempo_revision', self.tiempo_revision),
+            ('tiempo_impresion', self.tiempo_impresion)
+        ]:
+            if valor is not None:
+                if valor > 2592000:  # 30 días
+                    raise ValidationError(f"{field_name}: El tiempo no puede exceder 30 días")
+                if valor < 60:  # 1 minuto mínimo
+                    raise ValidationError(f"{field_name}: El tiempo mínimo es de 60 segundos")
